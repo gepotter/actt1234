@@ -1,0 +1,102 @@
+# Programmer Name: Gail Potter
+# JUL 2021
+# R version:  4.0.4
+# Purpose: imputation model for missing CRP
+# Input data sets: analysis.data.Rda
+
+library(dplyr)
+library(stringr)
+library(MASS)
+library(ggplot2)
+library(scales)
+library(gridExtra)
+
+outdir="N:/COVID-19/ACTT/Combined ACTT Analyses/ACTT123 comparison of RDV arm/output"
+setwd(outdir)
+load("analysis.data.Rda")
+
+analysis.data$severity67 = analysis.data$BCSOSN>=6
+analysis.data$site=factor(analysis.data$SITEID)
+
+names(analysis.data) =  str_remove(names(analysis.data), " ")
+names(analysis.data) =  str_remove(names(analysis.data), ", ")
+names(analysis.data) =  str_remove(names(analysis.data), "/")
+names(analysis.data) =  str_remove(names(analysis.data), " ")
+names(analysis.data) =  str_remove(names(analysis.data), " ")
+names(analysis.data) =  str_remove(names(analysis.data), " ")
+names(analysis.data) = unlist(lapply(strsplit(names(analysis.data), split='(', fixed=TRUE), '[[', 1))
+
+select=dplyr::select
+
+subj.data = analysis.data%>% filter(!duplicated(USUBJID))%>%  select(logcrp,site, AGE,RACE,male,ETHNIC,BMIFL,DIABFL,phase,
+                                        CKDFL,CLDFL,CRDFL,ASTHMAFL,BDURSYMP,CORFL,HYPFL,CADFL,
+                                        CHFFL,CANCERFL,IMMDFL,num.comorbidities,news,HeartRate ,OxygenSaturation,RespiratoryRate,
+                                        SystolicBloodPressure,Temperature,consciousness,BCSOSN, 
+                                        LOG.ALT,LOG.AST,LOG.BILI,LOG.EOS,LOG.EOSLE,LOG.GFRE,LOG.HGB,
+                                        LOG.LYM,LOG.LYMLE,LOG.NEUT,LOG.NEUTLE,LOG.PLAT,LOG.WBC,
+                                        ALT,AST,BILI,EOS,EOSLE,GFRE,HGB,LYM,LYMLE,NEUT,NEUTLE,PLAT,WBC,
+                                        symp.onset.to.hospitalization,severity67,cohort) 
+
+dat1 = subj.data %>% filter(cohort=="ACTT1") %>% select(-cohort)
+dat2 = subj.data %>% filter(cohort=="ACTT2") %>% select(-cohort)
+dat3 = subj.data %>% filter(cohort=="ACTT3") %>% select(-cohort)
+
+## Fit separate model for each cohort
+dat1.cc = dat1[complete.cases(dat1 ),]
+mean(complete.cases(dat1))
+
+formula = 'logcrp~male+RACE+ETHNIC+AGE+factor(BCSOSN)+
+  news+BDURSYMP+symp.onset.to.hospitalization+ 
+  BMIFL+DIABFL+CKDFL+CLDFL+CRDFL+ASTHMAFL+CORFL+CADFL+HYPFL+
+  CHFFL+CANCERFL+IMMDFL+
+  HeartRate +OxygenSaturation+RespiratoryRate+
+  SystolicBloodPressure+Temperature+
+  LOG.ALT+LOG.AST+LOG.BILI+LOG.GFRE+sqrt(EOS)+sqrt(EOSLE)+
+  HGB+ LOG.WBC+ LOG.LYM+
+  LOG.LYMLE+LOG.NEUT+NEUTLE+LOG.PLAT'
+
+mod1=lm(formula=formula,  data=dat1.cc)
+mod1
+# Based on inspection of scatter plots, a square root transformation was 
+# used for eosinophils and eosinophil/leukocyte ratio, no transformation 
+# for hemoglobin or neutrophils, and a natural log transformation for all other labs.
+
+step1=step(mod1)
+AIC(mod1)
+AIC(step1)
+
+plot(step1$coef)
+plot(step1$coef[-1])
+
+dat2.cc = dat2[complete.cases(dat2),]
+mean(complete.cases(dat2))
+
+mod2=lm(formula=formula,data=dat2.cc)
+step2=step(mod2)
+
+AIC(mod2)
+AIC(step2)
+
+plot(step2$coefficients)
+plot(step2$coefficients[-1])
+step2$coefficients
+
+dat3.cc = dat3[complete.cases(dat3),]
+mean(complete.cases(dat3))
+
+mod3=lm(formula=formula, data=dat3.cc)
+
+step3=step(mod3)
+AIC(mod3)
+AIC(step3)
+
+plot(step3$coef)
+step3$coef
+summary(step3$coef)
+summary(step3$coef[-1])
+
+
+save(step1, file=paste(outdir,'/imputation_model1',sep=''))
+save(step2, file=paste(outdir,'/imputation_model2',sep=''))
+save(step3, file=paste(outdir,'/imputation_model3',sep=''))
+
